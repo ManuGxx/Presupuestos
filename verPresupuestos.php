@@ -1,67 +1,103 @@
 <?php
+// Iniciar sesión para poder acceder a $_SESSION
 session_start();
+
+// Incluir el archivo de conexión a la base de datos
 include("conexion.php");
 
-// Redirigir si no ha iniciado sesión
+// Verificar si el usuario ha iniciado sesión, si no, redirigir al login
 if (!isset($_SESSION['usuario'])) {
     header("Location: login.php");
     exit();
 }
 
+// Obtener el nombre de usuario desde la sesión
 $usuario_nombre = $_SESSION['usuario'];
 
-// Obtener datos del usuario
+// Preparar la consulta para obtener id y admin del usuario con nombre dado
 $sql_usuario = "SELECT id, Admin FROM usuarios WHERE nombre = ?";
-$stmt_usuario = $conexion->prepare($sql_usuario);
-$stmt_usuario->bind_param("s", $usuario_nombre);
-$stmt_usuario->execute();
-$resultado_usuario = $stmt_usuario->get_result();
+$stmt_usuario = mysqli_prepare($conexion, $sql_usuario);
 
-if ($resultado_usuario->num_rows === 0) {
+// Vincular el parámetro de la consulta (nombre de usuario)
+mysqli_stmt_bind_param($stmt_usuario, "s", $usuario_nombre);
+
+// Ejecutar la consulta
+mysqli_stmt_execute($stmt_usuario);
+
+// Obtener el resultado de la consulta
+$resultado_usuario = mysqli_stmt_get_result($stmt_usuario);
+
+// Verificar si el usuario existe en la base de datos
+if (mysqli_num_rows($resultado_usuario) === 0) {
+    // Si no se encuentra usuario, terminar script con mensaje de error
     die("Usuario no encontrado");
 }
 
-$usuario = $resultado_usuario->fetch_assoc();
-$usuario_id = $usuario['id'];
-$es_admin = $usuario['Admin'] == 1;
+// Extraer datos del usuario en un array asociativo
+$usuario = mysqli_fetch_assoc($resultado_usuario);
 
-// Variables para ordenar (solo para admin)
+// Guardar el id del usuario y si es admin (1) o no (0)
+$usuario_id = $usuario['id'];
+$es_admin = ($usuario['Admin'] == 1);
+
+// Inicializar variables para ordenar resultados
 $ordenar_por = '';
 $orden_dir = 'ASC';
 
+// Si el usuario es admin y existe parámetro GET para ordenar
 if ($es_admin && isset($_GET['ordenar_por'])) {
+    // Guardar campo por el que ordenar
     $ordenar_por = $_GET['ordenar_por'];
+
+    // Guardar dirección del orden (ASC o DESC), por defecto ASC
     $orden_dir = (isset($_GET['orden_dir']) && strtoupper($_GET['orden_dir']) === 'DESC') ? 'DESC' : 'ASC';
 
-    // Validar campo ordenar_por
+    // Validar que el campo ordenar_por es uno de los permitidos
     $campos_validos = ['precio_estimado', 'fecha', 'metros', 'nombre'];
+
     if (!in_array($ordenar_por, $campos_validos)) {
+        // Si no es válido, no ordenar
         $ordenar_por = '';
     }
 }
 
-// Construir consulta
+// Construir la consulta SQL según si es admin o no
 if ($es_admin) {
+    // Consulta para admin, incluye nombre de usuario y permite ordenar
     $sql = "SELECT p.servicio_presupuestado, p.metros, p.precio_estimado, p.fecha, u.nombre 
             FROM presupuestos p 
             JOIN usuarios u ON p.usuario_presupuesto_id = u.id";
+
+    // Añadir cláusula ORDER BY si hay campo válido para ordenar
     if ($ordenar_por !== '') {
+        // Se añade el orden dinámicamente
         $sql .= " ORDER BY $ordenar_por $orden_dir";
     } else {
+        // Por defecto ordenar por fecha descendente
         $sql .= " ORDER BY p.fecha DESC";
     }
-    $stmt = $conexion->prepare($sql);
+
+    // Preparar la consulta para admin
+    $stmt = mysqli_prepare($conexion, $sql);
 } else {
+    // Consulta para usuario normal: solo sus presupuestos, ordenados por fecha descendente
     $sql = "SELECT servicio_presupuestado, metros, precio_estimado, fecha 
             FROM presupuestos 
             WHERE usuario_presupuesto_id = ? 
             ORDER BY fecha DESC";
-    $stmt = $conexion->prepare($sql);
-    $stmt->bind_param("i", $usuario_id);
+
+    // Preparar la consulta para usuario normal
+    $stmt = mysqli_prepare($conexion, $sql);
+
+    // Vincular parámetro usuario_id para filtrar solo sus presupuestos
+    mysqli_stmt_bind_param($stmt, "i", $usuario_id);
 }
 
-$stmt->execute();
-$resultado = $stmt->get_result();
+// Ejecutar la consulta
+mysqli_stmt_execute($stmt);
+
+// Obtener resultado de la consulta
+$resultado = mysqli_stmt_get_result($stmt);
 ?>
 
 <!DOCTYPE html>
@@ -106,6 +142,7 @@ $resultado = $stmt->get_result();
 </head>
 <body>
 
+<!-- Botón cerrar sesión en la esquina superior derecha -->
 <div style="position: absolute; top: 20px; right: 20px; z-index: 999;">
     <?php if (isset($_SESSION['usuario'])): ?>
         <a href="formulario/logout.php" class="btn btn-danger btn-sm">Cerrar sesión</a>
@@ -113,8 +150,10 @@ $resultado = $stmt->get_result();
 </div>
 
 <div class="container">
+    <!-- Título que varía según si es admin o no -->
     <h2 class="mb-4"><?php echo $es_admin ? 'Todos los Presupuestos' : 'Mis Presupuestos'; ?></h2>
 
+    <!-- Formulario para filtro y orden si es admin -->
     <?php if ($es_admin): ?>
         <form method="GET" class="filtro-form row g-3 align-items-center">
             <div class="col-auto">
@@ -141,6 +180,7 @@ $resultado = $stmt->get_result();
         </form>
     <?php endif; ?>
 
+    <!-- Tabla para mostrar los presupuestos -->
     <table class="table table-striped table-dark">
         <thead>
             <tr>
@@ -152,16 +192,23 @@ $resultado = $stmt->get_result();
             </tr>
         </thead>
         <tbody>
-            <?php while ($row = $resultado->fetch_assoc()): ?>
+            <?php 
+            // Recorrer resultados y mostrar cada fila en la tabla
+            while ($row = mysqli_fetch_assoc($resultado)): ?>
                 <tr>
-                    <?php if ($es_admin): ?><td><?php echo htmlspecialchars($row['nombre']); ?></td><?php endif; ?>
+                    <?php if ($es_admin): ?>
+                        <td><?php echo htmlspecialchars($row['nombre']); ?></td>
+                    <?php endif; ?>
                     <td><?php echo htmlspecialchars($row['servicio_presupuestado']); ?></td>
                     <td><?php echo htmlspecialchars($row['metros']); ?></td>
                     <td><?php echo number_format($row['precio_estimado'], 2); ?></td>
                     <td><?php echo htmlspecialchars($row['fecha']); ?></td>
                 </tr>
             <?php endwhile; ?>
-            <?php if ($resultado->num_rows === 0): ?>
+
+            <?php 
+            // Si no hay resultados mostrar mensaje
+            if (mysqli_num_rows($resultado) === 0): ?>
                 <tr>
                     <td colspan="<?php echo $es_admin ? 5 : 4; ?>" class="text-center">No hay presupuestos para mostrar.</td>
                 </tr>
