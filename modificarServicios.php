@@ -1,63 +1,76 @@
 <?php
-session_start();
-include("conexion.php");
+session_start(); // Iniciar sesión para usar variables de sesión
+include("conexion.php"); // Incluir archivo con conexión a la base de datos
 
-// Verificar que el usuario ha iniciado sesión y es admin
+// Comprobar si el usuario está logueado
 if (!isset($_SESSION['usuario'])) {
-    header("Location: login.php");
-    exit();
+    header("Location: login.php"); // Redirigir al login si no está logueado
+    exit(); // Terminar script para evitar que se siga ejecutando
 }
 
 $usuario_nombre = $_SESSION['usuario'];
+
+// Preparar consulta para obtener el campo Admin del usuario actual
 $sql_admin = "SELECT Admin FROM usuarios WHERE nombre = ?";
-$stmt_admin = $conexion->prepare($sql_admin);
-$stmt_admin->bind_param("s", $usuario_nombre);
-$stmt_admin->execute();
-$result_admin = $stmt_admin->get_result();
-$usuario = $result_admin->fetch_assoc();
-$es_admin = ($usuario['Admin'] == 1);
+$stmt_admin = mysqli_prepare($conexion, $sql_admin); // Preparar la consulta SQL
+mysqli_stmt_bind_param($stmt_admin, "s", $usuario_nombre); // Vincular el parámetro (nombre)
+mysqli_stmt_execute($stmt_admin); // Ejecutar la consulta
+mysqli_stmt_bind_result($stmt_admin, $admin); // Asociar variable para resultado
+mysqli_stmt_fetch($stmt_admin); // Obtener resultado
+mysqli_stmt_close($stmt_admin); // Cerrar la sentencia
+
+// Verificar si el usuario es administrador
+$es_admin = ($admin == 1);
 
 if (!$es_admin) {
+    // Si no es admin, denegar acceso y detener ejecución
     echo "Acceso denegado.";
     exit();
 }
 
-// Actualizar precio
+// ACTUALIZAR PRECIO
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar_id'])) {
-    $id = $_POST['editar_id'];
-    $nuevo_precio = $_POST['nuevo_precio'];
+    $id = $_POST['editar_id']; // ID del servicio a actualizar
+    $nuevo_precio = $_POST['nuevo_precio']; // Nuevo precio para actualizar
 
+    // Preparar consulta para actualizar el precio
     $sql_update = "UPDATE servicios SET precio = ? WHERE id = ?";
-    $stmt = $conexion->prepare($sql_update);
-    $stmt->bind_param("di", $nuevo_precio, $id);
-    $stmt->execute();
+    $stmt = mysqli_prepare($conexion, $sql_update); // Preparar la consulta
+    mysqli_stmt_bind_param($stmt, "di", $nuevo_precio, $id); // Vincular parámetros (double, int)
+    mysqli_stmt_execute($stmt); // Ejecutar actualización
+    mysqli_stmt_close($stmt); // Cerrar sentencia
 }
 
-// Eliminar servicio
+// ELIMINAR SERVICIO
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['eliminar_id'])) {
-    $id = $_POST['eliminar_id'];
+    $id = $_POST['eliminar_id']; // ID del servicio a eliminar
 
+    // Preparar consulta para eliminar el servicio
     $sql_delete = "DELETE FROM servicios WHERE id = ?";
-    $stmt = $conexion->prepare($sql_delete);
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
+    $stmt = mysqli_prepare($conexion, $sql_delete); // Preparar consulta
+    mysqli_stmt_bind_param($stmt, "i", $id); // Vincular parámetro (int)
+    mysqli_stmt_execute($stmt); // Ejecutar eliminación
+    mysqli_stmt_close($stmt); // Cerrar sentencia
 }
 
-// Añadir nuevo servicio
+// AÑADIR NUEVO SERVICIO
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nuevo_servicio'], $_POST['nuevo_precio'])) {
-    $nuevo_servicio = trim($_POST['nuevo_servicio']);
-    $nuevo_precio = $_POST['nuevo_precio'];
+    $nuevo_servicio = trim($_POST['nuevo_servicio']); // Limpiar espacios del nombre del servicio
+    $nuevo_precio = $_POST['nuevo_precio']; // Precio nuevo
 
-    if ($nuevo_servicio !== '') {
+    if ($nuevo_servicio !== '') { // Validar que el nombre no esté vacío
+        // Preparar consulta para insertar nuevo servicio
         $sql_insert = "INSERT INTO servicios (servicio, precio) VALUES (?, ?)";
-        $stmt = $conexion->prepare($sql_insert);
-        $stmt->bind_param("sd", $nuevo_servicio, $nuevo_precio);
-        $stmt->execute();
+        $stmt = mysqli_prepare($conexion, $sql_insert); // Preparar consulta
+        mysqli_stmt_bind_param($stmt, "sd", $nuevo_servicio, $nuevo_precio); // Vincular parámetros (string, double)
+        mysqli_stmt_execute($stmt); // Ejecutar inserción
+        mysqli_stmt_close($stmt); // Cerrar sentencia
     }
 }
 
-// Obtener lista actualizada de servicios
-$resultado = $conexion->query("SELECT * FROM servicios ORDER BY id ASC");
+// Obtener lista actualizada de servicios para mostrar en la tabla
+$resultado = mysqli_query($conexion, "SELECT * FROM servicios ORDER BY id ASC");
+
 ?>
 
 <!DOCTYPE html>
@@ -65,6 +78,7 @@ $resultado = $conexion->query("SELECT * FROM servicios ORDER BY id ASC");
 <head>
     <meta charset="UTF-8">
     <title>Modificar Servicios</title>
+    <!-- Bootstrap CSS para estilos -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
@@ -85,7 +99,6 @@ $resultado = $conexion->query("SELECT * FROM servicios ORDER BY id ASC");
         input[type="number"], input[type="text"] {
             width: 100%;
         }
-        /* Posición del botón cerrar sesión */
         .logout-btn {
             position: absolute;
             top: 20px;
@@ -96,7 +109,7 @@ $resultado = $conexion->query("SELECT * FROM servicios ORDER BY id ASC");
 </head>
 <body>
 
-<!-- Botón cerrar sesión -->
+<!-- Botón para cerrar sesión -->
 <div class="logout-btn">
     <a href="logout.php" class="btn btn-danger btn-sm">Cerrar sesión</a>
 </div>
@@ -104,6 +117,7 @@ $resultado = $conexion->query("SELECT * FROM servicios ORDER BY id ASC");
 <div class="container">
     <h2 class="mb-4">Modificar Servicios</h2>
 
+    <!-- Tabla para mostrar servicios -->
     <table class="table table-dark table-striped">
         <thead>
             <tr>
@@ -114,11 +128,12 @@ $resultado = $conexion->query("SELECT * FROM servicios ORDER BY id ASC");
             </tr>
         </thead>
         <tbody>
-            <?php while ($servicio = $resultado->fetch_assoc()): ?>
+            <?php while ($servicio = mysqli_fetch_assoc($resultado)): ?>
                 <tr>
                     <td><?php echo $servicio['id']; ?></td>
                     <td><?php echo htmlspecialchars($servicio['servicio']); ?></td>
                     <td>
+                        <!-- Formulario para actualizar precio -->
                         <form method="POST" class="d-flex">
                             <input type="hidden" name="editar_id" value="<?php echo $servicio['id']; ?>">
                             <input type="number" step="0.01" name="nuevo_precio" value="<?php echo $servicio['precio']; ?>" class="form-control me-2">
@@ -126,6 +141,7 @@ $resultado = $conexion->query("SELECT * FROM servicios ORDER BY id ASC");
                         </form>
                     </td>
                     <td>
+                        <!-- Formulario para eliminar servicio -->
                         <form method="POST">
                             <input type="hidden" name="eliminar_id" value="<?php echo $servicio['id']; ?>">
                             <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('¿Estás seguro de que quieres eliminar este servicio?')">Eliminar</button>
@@ -136,6 +152,7 @@ $resultado = $conexion->query("SELECT * FROM servicios ORDER BY id ASC");
         </tbody>
     </table>
 
+    <!-- Formulario para añadir nuevo servicio -->
     <h4 class="mt-4">Añadir Nuevo Servicio</h4>
     <form method="POST" class="row g-3 mt-2">
         <div class="col-md-6">
