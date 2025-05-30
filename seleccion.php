@@ -1,22 +1,43 @@
 <?php
+// Iniciar la sesión para usar variables de sesión
 session_start();
+
+// Incluir el archivo de conexión a la base de datos
 include("conexion.php");
 
+// Comprobar si el usuario ha iniciado sesión
 if (!isset($_SESSION['usuario'])) {
+    // Si no hay sesión, redirigir a la página de login
     header("Location: login.php");
     exit();
 }
 
+// Guardar el nombre del usuario que está logueado
 $usuario_nombre = $_SESSION['usuario'];
 
-// Consultar si es admin
+// Preparar la consulta SQL para obtener el campo Admin del usuario actual
 $sql = "SELECT Admin FROM usuarios WHERE nombre = ?";
-$stmt = $conexion->prepare($sql);
-$stmt->bind_param("s", $usuario_nombre);
-$stmt->execute();
-$resultado = $stmt->get_result();
-$usuario = $resultado->fetch_assoc();
-$es_admin = ($usuario['Admin'] == 1);
+
+// Preparar la consulta para evitar inyección SQL
+$stmt = mysqli_prepare($conexion, $sql);
+
+// Vincular el parámetro (nombre del usuario) a la consulta preparada
+mysqli_stmt_bind_param($stmt, "s", $usuario_nombre);
+
+// Ejecutar la consulta
+mysqli_stmt_execute($stmt);
+
+// Obtener el resultado de la consulta
+mysqli_stmt_bind_result($stmt, $admin_valor);
+
+// Obtener el valor de Admin (0 o 1)
+mysqli_stmt_fetch($stmt);
+
+// Cerrar la consulta preparada
+mysqli_stmt_close($stmt);
+
+// Determinar si el usuario es admin (true si Admin == 1, false si no)
+$es_admin = ($admin_valor == 1);
 ?>
 
 <!DOCTYPE html>
@@ -24,6 +45,7 @@ $es_admin = ($usuario['Admin'] == 1);
 <head>
     <meta charset="UTF-8">
     <title>Panel de Usuario</title>
+    <!-- Incluir CSS de Bootstrap para estilos -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
@@ -61,22 +83,33 @@ $es_admin = ($usuario['Admin'] == 1);
 
 <!-- Botón Cerrar sesión arriba a la derecha -->
 <div style="position: fixed; top: 20px; right: 20px; z-index: 999;">
-    <?php if (isset($_SESSION['usuario'])): ?>
+    <?php 
+    // Mostrar el botón de cerrar sesión solo si hay sesión iniciada
+    if (isset($_SESSION['usuario'])) { 
+    ?>
         <a href="logout.php" class="btn btn-danger btn-sm">Cerrar sesión</a>
-    <?php endif; ?>
+    <?php 
+    } 
+    ?>
 </div>
 
 <div class="container">
     <div class="panel-container">
         <h2 class="mb-4">¿Qué deseas hacer?</h2>
 
+        <!-- Enlaces para acciones que cualquier usuario puede hacer -->
         <a href="CrearPresupuesto.php" class="btn btn-option">Crear Presupuesto</a>
         <a href="verPresupuestos.php" class="btn btn-option">Ver Presupuestos Anteriores</a>
 
-        <?php if ($es_admin): ?>
+        <?php 
+        // Si el usuario es admin, mostrar opciones exclusivas de administrador
+        if ($es_admin) { 
+        ?>
             <a href="modificarServicios.php" class="btn btn-option">Modificar Servicios</a>
             <a href="verClientes.php" class="btn btn-option">Ver Clientes</a>
-        <?php endif; ?>
+        <?php 
+        } 
+        ?>
     </div>
 </div>
 
