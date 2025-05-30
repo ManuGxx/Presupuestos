@@ -1,48 +1,80 @@
 <?php
+// Iniciar sesión
 session_start();
+
+// Incluir archivo de conexión (debe usar mysqli en modo procedural)
 include("conexion.php");
 
+// Variable para mensajes al usuario
 $mensaje = "";
 
+// Comprobar si el formulario fue enviado por POST
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    // Obtener y limpiar los datos del formulario
     $nombre = trim($_POST['nombre']);
     $email = trim($_POST['email']);
     $contrasena = $_POST['contrasena'];
-    $admin = 0; // Siempre 0, el usuario no puede elegir
+    $admin = 0; // Por defecto 0: el usuario no puede decidir si es admin
 
-    // Validaciones básicas
+    // Validar que todos los campos estén completos
     if (empty($nombre) || empty($email) || empty($contrasena)) {
         $mensaje = "<div class='alert alert-danger'>Por favor, complete todos los campos obligatorios.</div>";
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    }
+    // Validar que el email tenga formato válido
+    elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $mensaje = "<div class='alert alert-danger'>Email no válido.</div>";
     } else {
-        // Comprobar si ya existe usuario con ese email o nombre
+        // Preparar la consulta para comprobar si el usuario ya existe
         $sql_check = "SELECT id FROM usuarios WHERE email = ? OR nombre = ?";
-        $stmt_check = $conexion->prepare($sql_check);
-        $stmt_check->bind_param("ss", $email, $nombre);
-        $stmt_check->execute();
-        $resultado_check = $stmt_check->get_result();
+        $stmt_check = mysqli_prepare($conexion, $sql_check);
 
-        if ($resultado_check->num_rows > 0) {
-            $mensaje = "<div class='alert alert-danger'>El nombre o email ya están registrados.</div>";
-        } else {
-            // Hashear la contraseña
-            $hash_password = password_hash($contrasena, PASSWORD_DEFAULT);
+        if ($stmt_check) {
+            // Enlazar parámetros a la consulta
+            mysqli_stmt_bind_param($stmt_check, "ss", $email, $nombre);
 
-            // Insertar usuario
-            $sql_insert = "INSERT INTO usuarios (nombre, email, contrasena, Admin) VALUES (?, ?, ?, ?)";
-            $stmt_insert = $conexion->prepare($sql_insert);
-            $stmt_insert->bind_param("sssi", $nombre, $email, $hash_password, $admin);
+            // Ejecutar la consulta
+            mysqli_stmt_execute($stmt_check);
 
-            if ($stmt_insert->execute()) {
-                $mensaje = "<div class='alert alert-success'>Usuario registrado correctamente.</div>";
+            // Obtener los resultados
+            $resultado_check = mysqli_stmt_get_result($stmt_check);
+
+            // Comprobar si se encontró algún usuario
+            if (mysqli_num_rows($resultado_check) > 0) {
+                $mensaje = "<div class='alert alert-danger'>El nombre o email ya están registrados.</div>";
             } else {
-                $mensaje = "<div class='alert alert-danger'>Error al registrar el usuario.</div>";
+                // Encriptar la contraseña
+                $hash_password = password_hash($contrasena, PASSWORD_DEFAULT);
+
+                // Preparar consulta para insertar nuevo usuario
+                $sql_insert = "INSERT INTO usuarios (nombre, email, contrasena, Admin) VALUES (?, ?, ?, ?)";
+                $stmt_insert = mysqli_prepare($conexion, $sql_insert);
+
+                if ($stmt_insert) {
+                    // Enlazar los valores
+                    mysqli_stmt_bind_param($stmt_insert, "sssi", $nombre, $email, $hash_password, $admin);
+
+                    // Ejecutar la inserción
+                    if (mysqli_stmt_execute($stmt_insert)) {
+                        $mensaje = "<div class='alert alert-success'>Usuario registrado correctamente.</div>";
+                    } else {
+                        $mensaje = "<div class='alert alert-danger'>Error al registrar el usuario.</div>";
+                    }
+
+                    // Cerrar la sentencia de inserción
+                    mysqli_stmt_close($stmt_insert);
+                }
             }
+
+            // Cerrar la sentencia de comprobación
+            mysqli_stmt_close($stmt_check);
         }
     }
+
+    // Cerrar la conexión a la base de datos
+    mysqli_close($conexion);
 }
 ?>
+
 
 <!DOCTYPE html>
 <html lang="es">
